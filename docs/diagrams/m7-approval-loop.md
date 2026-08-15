@@ -1,4 +1,8 @@
-%% E. M7 self-improving rulebook loop — PR承認ゲート（正本: docs/design.md §6 M7）
+# E. M7 self-improving rulebook loop — PR承認ゲート
+
+正本: [docs/design.md](../design.md) §6 M7
+
+```mermaid
 flowchart TD
     classDef general fill:#fff6b6,stroke:#af7e02
     classDef decision fill:#c6dcff,stroke:#305bab
@@ -45,3 +49,4 @@ flowchart TD
     Q3 -->|"Yes"| G2
     G2 --> DONE
     CLOSE -.-> EXIT
+```

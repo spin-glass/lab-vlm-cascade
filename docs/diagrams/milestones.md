@@ -1,4 +1,8 @@
-%% C. マイルストーンロードマップ（正本: docs/design.md §6, §8）
+# C. マイルストーンロードマップ
+
+正本: [docs/design.md](../design.md) §6, §8
+
+```mermaid
 flowchart LR
     classDef core fill:#c6dcff,stroke:#305bab
     classDef optional fill:#e7e7e7,stroke:#595959
@@ -19,3 +23,4 @@ flowchart LR
     M5 -.->|"任意"| M7
     M4 -.->|"監査不一致集合を訓練信号に"| M7
     M5 --- STOP
+```

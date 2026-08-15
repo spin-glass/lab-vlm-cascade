@@ -1,4 +1,8 @@
-%% B. 1枚の写真の判定フロー（正本: docs/design.md §1, §4）
+# B. 1枚の写真の判定フロー
+
+正本: [docs/design.md](../design.md) §1, §4
+
+```mermaid
 flowchart TD
     classDef general fill:#fff6b6,stroke:#af7e02
     classDef decision fill:#c6dcff,stroke:#305bab
@@ -30,3 +34,4 @@ flowchart TD
     V --> Q3
     Q3 -->|"Yes"| C3
     Q3 -->|"No (不一致)"| I
+```

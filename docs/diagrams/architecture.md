@@ -1,4 +1,8 @@
-%% A. システムアーキテクチャ（正本: docs/design.md §1, §3）
+# A. システムアーキテクチャ
+
+正本: [docs/design.md](../design.md) §1, §3
+
+```mermaid
 flowchart LR
     classDef stage fill:#c6dcff,stroke:#305bab
     classDef store fill:#e7e7e7,stroke:#595959
@@ -48,3 +52,4 @@ flowchart LR
     GEN -->|"VLMプロンプト"| S3
     RUNS -->|"二重送出・不通でも完走"| WB
     RUNS -->|"二重送出・不通でも完走"| VX
+```
