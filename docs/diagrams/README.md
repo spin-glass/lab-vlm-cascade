@@ -17,4 +17,16 @@ decision matrix（D1–D10）の表は design.md §8 が正本のため、ここ
 
 閲覧用: <https://miro.com/app/board/uXjVHxs_4FQ=/>
 
-フレーム構成: 01 Overview（アーキテクチャ・ロードマップ）／ 02 Detail（判定フロー・M7承認ゲート）／ 03 Decisions（D1–D10 表）
+**「00 START HERE」から、左から右へ 00 → 05 の順に読む**（右下のナビゲーションで Frames 一覧を開ける）。各フレームは見出しと1文の説明を持ち、何を理解すればよいかを明示している。
+
+| フレーム | 中身 |
+|---|---|
+| 00 START HERE | 何を検証するプロジェクトか、読む順、数値が未記入である理由 |
+| 01 全体像 | architecture 図 |
+| 02 進め方 | milestones 図 |
+| 03 判定の詳細 | decision-flow 図 |
+| 04 ガバナンス | m7-approval-loop 図（M7・任意） |
+| 05 判断基準 | D1–D10 の decision matrix 表 |
+| ZZ ARCHIVE | 旧レイアウト。Miro の API では図を削除できないため隔離してある。参照しない |
+
+01→02 だけで全体像は掴める。03 以降は実装・詳細検討向け。
