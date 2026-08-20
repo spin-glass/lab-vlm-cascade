@@ -17,22 +17,25 @@ photos ─▶ Stage1: encoder zero-shot ─▶ Stage2: decision layer ─▶ 確
         predictions (parquet)        Stage3: VLM escalation ─▶ 確定 or irreducible
                                            │
 offline: 監査ループ (cleanlab / VLM合議 / κ定点観測) ◀──┘
-single source: rulebook.md ─▶ クラスプロンプト / 判定表 / VLMプロンプトを生成
+single source (語彙):     taxonomy/taxonomy.yaml ─▶ クラス定義 / 階層 / 葉プロンプト
+single source (ポリシー): rulebook.md            ─▶ 優先規則 / 判定表 / VLMプロンプト
 ```
+
+分類体系は2階層タクソノミー（food / non-food → 運用5クラス → プロンプト用サブクラス）。「food でない」という否定を非 food 側の肯定クラスの列挙に置き換え、誤爆しやすい対象を正しい親の下のサブクラスとして命名する。設計ノートは [docs/taxonomy.md](docs/taxonomy.md)。
 
 ## 設計判断はデータ分析で下す
 
-カスケード採否・しきい値粒度・較正要否・既存ラベル再利用可否など8つの設計判断（D1–D8）は事前に決め打ちせず、[docs/design.md](docs/design.md) §8 の decision matrix に定義した分析と判断基準で決定し、reports/ に意思決定ログ（基準値・実測値・採否）を残す。分析コードは DuckDB / BigQuery 両対応で書かれており、**公開データで方法論を確立 → 同一スクリプトを自組織のデータに向けて再実行**する二段構えの移植性を持つ。
+カスケード採否・しきい値粒度・較正要否・既存ラベル再利用可否・階層スコアリング採否など13の設計判断（D1–D13）は事前に決め打ちせず、[docs/design.md](docs/design.md) §8 の decision matrix に定義した分析と判断基準で決定し、reports/ に意思決定ログ（基準値・実測値・採否）を残す。分析コードは DuckDB / BigQuery 両対応で書かれており、**公開データで方法論を確立 → 同一スクリプトを自組織のデータに向けて再実行**する二段構えの移植性を持つ。
 
 ## マイルストーン
 
 | M | 内容 | 完了条件 |
 |---|---|---|
-| M0 | セットアップ・eval凍結・トラッカー fan-out | reports/m0_setup.md |
-| M1 | ゼロショット基線・混同ペアの定量特定 | reports/m1_baseline.md |
+| M0 | セットアップ・eval凍結・トラッカー fan-out・taxonomy 導入 | reports/m0_setup.md |
+| M1 | ゼロショット基線・フラット vs 階層・混同ペアの定量特定 | reports/m1_baseline.md |
 | M2 | 判定層・risk–coverage・しきい値探索 | reports/m2_decision_layer.md |
 | M3 | カスケード vs 全量VLM の精度・コスト実測比較 | reports/m3_cascade_vs_vlm.md |
-| M4 | ラベル監査（cleanlab＋VLM合議、precision@N） | reports/m4_label_audit.md |
+| M4 | ラベル監査（cleanlab＋VLM合議、precision@N）・gold パイロットアノテーション | reports/m4_label_audit.md |
 | M5 | rulebook改版の即応デモ（再学習なし） | reports/m5_rulebook_change.md |
 | M6 | （任意）soft label 蒸留＋WiSE-FT | reports/m6_distill.md |
 | M7 | （任意）self-improving rulebook loop — 監査不一致からの自動改訂案生成＋承認ゲート、Stage3サブワークフローの予算制約探索 | reports/m7_self_improving_loop.md |
@@ -55,12 +58,14 @@ uv run python -m cascade.m0_setup --config configs/m0.yaml
 ## リポジトリ構成
 
 ```
-rulebook.md          # 分類意図・優先順位ルール（単一ソース、semver管理）
+taxonomy/            # taxonomy.yaml（クラス定義の正本）＋ build/viz と生成物（prompts.json, label_master.csv, taxonomy.ttl）
+rulebook.md          # 分類意図・優先順位ルール・品質規則（ポリシーの単一ソース、semver管理）
 configs/             # しきい値・モデルID（ピン留め）・API呼び出し上限
 src/cascade/         # stage1_encode / stage2_decide / stage3_escalate / audit / eval
-analysis/            # 設計判断 D1–D8 の分析（DuckDB / BigQuery 両対応）
-reports/             # 各Mの自動生成レポート（run_id・git sha・概算コスト記載）
+analysis/            # 設計判断 D1–D13 の分析（DuckDB / BigQuery 両対応）
+reports/             # 各Mの自動生成レポート（run_id・git sha・taxonomy/rulebook 版・概算コスト記載）
 docs/design.md       # 設計の正本
+docs/taxonomy.md     # 分類体系・アノテーション設計ノート
 docs/references.md   # 主張→一次文献の対応
 CLAUDE.md            # 実装時の制約・規約
 ```

@@ -88,6 +88,33 @@ design.md および reports/ で数値・設計主張をする際の引用元。
 - **[Tip22]** Zhang et al. "Tip-Adapter: Training-free Adaption of CLIP for Few-shot Classification." ECCV 2022. https://arxiv.org/abs/2207.09519
   — 主張: few-shot集合から key-value キャッシュを構築し、特徴検索でCLIPの事前知識を更新する訓練不要の適応。学習必須手法に匹敵。シルバーラベルをキャッシュ化する低コスト中間段（M6前段）の候補。
 
+## 10. 分類体系・アノテーション・階層活用（taxonomy.md の根拠）
+
+- **[CHiLS23]** Novack, McAuley, Lipton & Garg. "CHiLS: Zero-Shot Image Classification with Hierarchical Label Sets." ICML 2023. https://arxiv.org/abs/2302.02551
+  — 主張: 抽象クラス名の下にサブクラスを置き、子でスコアリングして親へ集約すると追加学習なしに zero-shot 精度が上がる。Stage1 の葉スコア→ブランチ max 方式（D11）の型。
+- **[Poincare17]** Nickel & Kiela. "Poincaré Embeddings for Learning Hierarchical Representations." NeurIPS 2017. https://arxiv.org/abs/1705.08039
+  — 主張: 階層構造は双曲空間に低次元で埋め込める。タクソノミー距離を学習信号に使う際の表現の選択肢。
+- **[KG21]** Hogan et al. "Knowledge Graphs." ACM Computing Surveys 54(4), 2021. https://arxiv.org/abs/2003.02320
+  — 主張: ナレッジグラフの総説。taxonomy.ttl（TBox）＋画像レコード（ABox）という本リポジトリの構造の位置づけ。
+- **[KGAT19]** Wang et al. "KGAT: Knowledge Graph Attention Network for Recommendation." KDD 2019. https://arxiv.org/abs/1905.07854
+  — 主張: 店舗・ジャンル・メニュー等へエンティティを拡張した際の下流利用例。
+- **[TIGER23]** Rajput et al. "Recommender Systems with Generative Retrieval." NeurIPS 2023. https://arxiv.org/abs/2305.05065
+  — 主張: RQ-VAE の残差量子化で階層的 Semantic ID を作る。埋め込みクラスタリングによるサブクラス発見（T10）と同型。
+- **[WiSE22]** Wortsman et al. "Robust fine-tuning of zero-shot models (WiSE-FT)." CVPR 2022. https://arxiv.org/abs/2109.01903
+  — 主張: zero-shot 重みと fine-tune 重みの補間で分布シフト頑健性を保ったまま精度を上げる。M6 の基本手順。
+- **[LiT22]** Zhai et al. "LiT: Zero-Shot Transfer with Locked-image text Tuning." CVPR 2022. https://arxiv.org/abs/2111.07991
+  — 主張: 画像塔を固定しテキスト塔のみ学習する対照チューニング。小規模 gold での微調整の選択肢。
+- **[LoRA21]** Hu et al. "LoRA: Low-Rank Adaptation of Large Language Models." ICLR 2022. https://arxiv.org/abs/2106.09685
+  — 主張: 低ランク差分での微調整。数千枚規模 gold でのフル微調整回避（M6）。
+- **[SigLIP2-25]** Tschannen et al. "SigLIP 2." arXiv:2502.14786. https://arxiv.org/abs/2502.14786
+  — 主張: sigmoid 損失の画像テキストエンコーダ。ペア独立のため、タクソノミー距離による負例重み付けを batch-softmax なしに書ける（M6）。
+- **[LeGrad24]** Bousselham et al. "LeGrad: An Explainability Method for Vision Transformers via Feature Formation Sensitivity." arXiv:2404.03214. https://arxiv.org/abs/2404.03214
+  — 主張: ViT の帰属可視化。誤爆画像の「どこに反応したか」をルールの根拠として記録する道具。
+- **[SKOS09]** W3C. "SKOS Simple Knowledge Organization System Reference" (Recommendation, 2009). https://www.w3.org/TR/skos-reference/ ／ "SKOS Primer." https://www.w3.org/TR/skos-primer/
+  — 主張: 統制語彙の標準語彙（prefLabel / altLabel / definition / scopeNote / broader / changeNote）。taxonomy.yaml の項目名の出典（T7）。
+- **[Hedden22]** Hedden, H. *The Accidental Taxonomist*, 3rd ed. Information Today, 2022.
+  — 主張: 分類体系設計の実務原則（is-a のみ、単一分割基準、相互排他、網羅）。§2 設計原理の出典。
+
 ## 引用規約
 
 reports/ 内で数値主張をする際は上記キー（[VJ01] 等）で引用する。本ファイルにない主張を導入する場合は、一次文献を確認してからここに追記する。

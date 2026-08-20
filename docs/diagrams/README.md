@@ -15,7 +15,9 @@ decision matrix（D1–D10）の表は design.md §8 が正本のため、ここ
 
 ## Miro ボード
 
-閲覧用: <https://miro.com/app/board/uXjVHxs_4FQ=/>
+**入口（このリンクから開く）**: <https://miro.com/app/board/uXjVHxs_4FQ=/?moveToWidget=3458764681346279125>
+
+ボードのルートURL（<https://miro.com/app/board/uXjVHxs_4FQ=/>）で開くと、削除できない旧図（ZZ ARCHIVE）が先に見えてしまうため、上の入口リンクを使う。
 
 **「00 START HERE」から、左から右へ 00 → 05 の順に読む**（右下のナビゲーションで Frames 一覧を開ける）。各フレームは見出しと1文の説明を持ち、何を理解すればよいかを明示している。
 

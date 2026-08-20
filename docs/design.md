@@ -20,11 +20,12 @@ photos ─▶ Stage1: encoder zero-shot ─▶ Stage2: decision layer ─▶ 確
         predictions (parquet)        Stage3: VLM escalation ─▶ 確定 or irreducible
                                            │
 offline: 監査ループ (cleanlab / VLM合議 / κ定点観測) ◀──┘
-single source: rulebook.md (versioned) ─▶ クラスプロンプト / 判定表 / VLMプロンプトを生成
+single source (語彙):     taxonomy/taxonomy.yaml (versioned) ─▶ クラス定義 / 階層 / 葉プロンプト
+single source (ポリシー): rulebook.md (versioned)            ─▶ 優先規則 / 判定表 / VLMプロンプト
 ```
 
-- Stage1: 画像エンコーダのゼロショット分類。クラスプロンプトは rulebook から生成
-- Stage2: しきい値＋優先順位ルールの決定的判定層。モデルなし、コードとconfigのみ
+- Stage1: 画像エンコーダのゼロショット分類。プロンプトは taxonomy の第3階層（葉）単位で持ち、ブランチ内 max で第1階層（food / non-food）と第2階層（運用5クラス）へ集約する。第1階層の確信度 `branch_margin = S_food − S_non` を Stage2 に渡す。二値の直列ハードゲートは置かない（詳細は [taxonomy.md](taxonomy.md) §5、採否は D11 / D12）
+- Stage2: しきい値＋優先順位ルールの決定的判定層。モデルなし、コードとconfigのみ。品質規則（ボケ等）と運用写像（unjudgeable の扱い）もこの層の管轄
 - Stage3: 委譲スライスのみ VLM（Gemini）で構造化出力判定。自己一致または2モデル一致で確定、不一致は irreducible
 - 監査: バッチでラベル・予測を検品（cleanlab、VLM合議、gold κ）
 
@@ -34,6 +35,7 @@ single source: rulebook.md (versioned) ─▶ クラスプロンプト / 判定�
 - 取得は公式ページから各自ダウンロード。**画像・生データはリポジトリ非同梱**（scripts/ に手順とチェックサム検証のみ）。README等にYelp画像を掲載しない。同梱の利用規約PDFの確認を M0 の最初の工程とする
 - サンプリング: work set = 層化 25,000枚 / eval set = 凍結 2,000枚（クラス別400目安＋natural分布スライス併設）。eval は photo_id リストのハッシュで凍結し、W&B reference artifact で版管理
 - ラベルの扱い: Yelp付与ラベルは「来歴の混在した既存ラベル」とみなす（実務で頻出する状況の一般形）。gold は M4 で目視スポットチェックした部分集合のみとする
+- gold の記録粒度: 運用クラス（第2階層）のみを記録し、第1階層（food / non-food）は導出する。内容（content_label）・判定可能性（quality）・判定者の迷い（boundary_flag）・属性（food_visible）は別フィールドで直交に持ち、残余クラスへ混載しない。アノテーションは 50〜100 枚のパイロット → ガイドライン改訂 → 本番の2パス制（[taxonomy.md](taxonomy.md) §4）
 
 ## 3. 技術スタックと実務転用マップ
 
@@ -54,33 +56,47 @@ single source: rulebook.md (versioned) ─▶ クラスプロンプト / 判定�
 
 **W&B 利用条件**: Free プランは個人プロジェクト限定のため、本リポジトリ（個人ポートフォリオ）に限定して使用する。W&B には画像・生データをアップロードしない（メトリクス・小テーブル・reference artifact のみ）。ストレージ 5GB/月の制限内に収まり、「画像はストレージ参照のみ」という実務パターンと同型になる。
 
-## 4. rulebook 仕様
+## 4. 単一ソース: taxonomy と rulebook
 
-- `rulebook.md` の構成: (a) 分類意図＝閲覧者がどのタブにその写真を期待するか (b) クラス定義 (c) 曖昧ペアごとの優先順位ルール (d) 境界事例の文例
+単一ソースは「語彙」と「ポリシー」の2ファイルに分け、手書きの重複定義を禁止する。語彙＝何があるか、ポリシー＝どう写像するか。
+
+**taxonomy（語彙）** — `taxonomy/taxonomy.yaml`。設計の詳細は [taxonomy.md](taxonomy.md)。
+- 内容: 2階層＋プロンプト用サブクラスの is-a 木。SKOS 借用項目（prefLabel / altLabel / definition / scopeNote / broader / changeNote）と構造制約（排他・網羅・導出式）
+- 版管理: `scheme.version`（`taxonomy_version`）。runs・reports に刻印する
+- 生成: `taxonomy/taxonomy_build.py` が検証のうえ `prompts.json`（Stage1 葉プロンプト）・`label_master.csv`（アノテーション用マスタ、第1階層は導出列）・`taxonomy.ttl` を生成。検証に1件でも失敗したら生成しない
+
+**rulebook（ポリシー）** — `rulebook.md`。
+- 構成: (a) 分類意図＝閲覧者がどのタブにその写真を期待するか (b) クラス定義の参照（本文は taxonomy の definition。重複記載しない） (c) 曖昧ペアごとの優先順位ルール＝多ファセット空間から単一ラベルへの射影。**アノテーション開始前に確定** (d) 境界事例の文例 (e) 品質規則と運用写像（unjudgeable の扱い、Laplacian 分散・OCR 被覆率等の決定的信号）
 - 版管理: semver（`rulebook_version`）。runs・reports に必ず刻印する
-- 生成: `scripts/gen_from_rulebook.py` が Stage1 クラスプロンプト・Stage2 判定表（YAML）・Stage3 プロンプトを rulebook から生成する。手書きの重複定義を禁止（単一ソース）
+- 生成: `scripts/gen_from_rulebook.py` が taxonomy の `prompts.json` と rulebook から Stage1 クラスプロンプト・Stage2 判定表（YAML）・Stage3 プロンプト（taxonomy の definition / scopeNote ＋ rulebook の優先規則・否定・例外を全部渡す）を生成する
 - 判定出力: `primary`, `secondary`（任意）, `flag ∈ {clear, rule_resolved, irreducible}`
+
+結合キーは taxonomy の `node_id` に統一する。プロンプト・ルールの対象ノード・評価スライス・レポートを同一 id で結合する。
 
 ## 5. スキーマ（DuckDB / parquet、BigQuery互換型のみ使用）
 
-- `labels(photo_id, label_source, label, provenance, ts)`
-- `predictions(run_id, photo_id, stage, probs_json, margin, primary, secondary, flag, model_id, cost_tokens, ts)`
-- `runs(run_id, git_sha, rulebook_version, eval_set_id, model_id, config_json, metrics_json, wandb_url, ts)`
+- `labels(photo_id, label_source, label, provenance, ts)` — label は第2階層クラス。gold は `gold_annotations` から `content_label` を射影して `label_source='gold'` で投入
+- `gold_annotations(photo_id, content_label, quality, boundary_flag, food_visible, secondary, annotator, guideline_version, ts)` — 第1階層は持たない（導出のみ）。`content_label ∈ 第2階層 ∪ {unjudgeable}`、`quality ∈ {ok, degraded, unjudgeable}`
+- `predictions(run_id, photo_id, stage, probs_json, margin, branch_margin, primary, secondary, flag, model_id, cost_tokens, ts)` — `probs_json` は第2階層の確率（葉スコアを含めてよい）、`branch_margin = S_food − S_non`
+- `runs(run_id, git_sha, taxonomy_version, rulebook_version, eval_set_id, model_id, config_json, metrics_json, wandb_url, ts)`
 - `eval_sets(eval_set_id, photo_ids_hash, definition, created_at)`
+- 推移閉包用に `taxonomy_nodes(node_id, level, parent_id, ancestors)` を marts に持ち、「food の全子孫」を1クエリで取れるようにする
+
+評価は2系統: 内容精度（`quality='unjudgeable'` を除外）と運用出力精度（運用写像による導出込み）。
 
 ## 6. マイルストーン
 
 ### M0 セットアップ
-uv環境、データ取得と規約確認、サンプリングとeval凍結、三層テーブル初期化、Tracker アダプタ実装と W&B project／GCP プロジェクト（Vertex AI Experiments）の初期化、`tracking` config の縮退動作テスト（wandb のみ／vertex のみ／none で完走すること）、Gemini の現行モデルIDを確認して config にピン留め（"latest" 系エイリアス禁止）。
-完了条件: `reports/m0_setup.md`（データ統計・クラス分布・eval定義）
+uv環境、データ取得と規約確認、サンプリングとeval凍結、三層テーブル初期化、Tracker アダプタ実装と W&B project／GCP プロジェクト（Vertex AI Experiments）の初期化、`tracking` config の縮退動作テスト（wandb のみ／vertex のみ／none で完走すること）、Gemini の現行モデルIDを確認して config にピン留め（"latest" 系エイリアス禁止）。`taxonomy/` の導入（taxonomy.yaml v0.1、build / viz の検証通過、負のテスト、Makefile または pre-commit への束ね）。
+完了条件: `reports/m0_setup.md`（データ統計・クラス分布・eval定義・taxonomy_version）
 
 ### M1 ゼロショットベースライン
-エンコーダ2種以上でクラス別 P/R/F1、混同行列、margin 分布。
-検証命題: 混同ペア（inside×food 等）が定量的に特定できる。
-完了条件: `reports/m1_baseline.md`＋W&B run
+最初にプロンプト埋め込みの余弦類似度行列（画像不要・テキストのみ）で兄弟プロンプトの過接近や誤爆吸収プロンプトの food 側偏りを診断し、プロンプト文を修正する。そのうえでエンコーダ2種以上でクラス別 P/R/F1、混同行列、margin 分布を、フラット5クラス方式と階層方式（葉スコア→ブランチ max）の両方で測る（D11）。food 予測画像 100 枚程度の precision 監査で誤爆の出所内訳を取り、誤爆吸収クラスの初期列挙を taxonomy v0.x に反映する（D13）。
+検証命題: 混同ペア（inside×food 等）が定量的に特定できる。階層方式がフラット方式に対して food precision を落とさずに改善するか。
+完了条件: `reports/m1_baseline.md`（類似度行列、方式別比較、precision 監査の内訳表）＋W&B run
 
 ### M2 判定層と risk–coverage
-risk–coverage 曲線からクラス別・ペア別しきい値を設計。しきい値探索の本体は Optuna（キャッシュ済み確率に対する純関数評価、数千トライアル）。加えて managed Vizier で同一探索空間のスタディを**無料枠内（≤100トライアル）で1本**実行し、Optuna との到達解を突き合わせて work-parity を記録する。さらに conformal prediction（split conformal / RAPS）による予測集合ベースの委譲規則——集合サイズ=1なら確定、≥2なら委譲＋secondary付与——をしきい値方式と比較し、**層別（クラス別・margin帯別）の被覆充足**まで検証する（D10。周辺被覆のみの保証は曖昧例の層で崩れうるため）。優先順位ルール v1.0 を判定層に実装しユニットテストを付ける。
+risk–coverage 曲線からクラス別・ペア別しきい値を設計。第1階層の `branch_margin` 閾値方式と直列二値ハードゲート方式を同一 eval で比較し、誤ゲートによる food 取りこぼしを実測する（D12）。しきい値探索の本体は Optuna（キャッシュ済み確率に対する純関数評価、数千トライアル）。加えて managed Vizier で同一探索空間のスタディを**無料枠内（≤100トライアル）で1本**実行し、Optuna との到達解を突き合わせて work-parity を記録する。さらに conformal prediction（split conformal / RAPS）による予測集合ベースの委譲規則——集合サイズ=1なら確定、≥2なら委譲＋secondary付与——をしきい値方式と比較し、**層別（クラス別・margin帯別）の被覆充足**まで検証する（D10。周辺被覆のみの保証は曖昧例の層で崩れうるため）。優先順位ルール v1.0 を判定層に実装しユニットテストを付ける。
 検証命題: カバレッジを X% 委譲すると残存誤り率が Y% 下がる、の定量化。
 完了条件: `reports/m2_decision_layer.md`（risk–coverage 図、採用しきい値、委譲率）
 
@@ -96,9 +112,9 @@ risk–coverage 曲線からクラス別・ペア別しきい値を設計。し�
 完了条件: `reports/m3_cascade_vs_vlm.md`（精度・コスト表、1万枚あたり試算、アブレーション表）
 
 ### M4 ラベル監査
-cleanlab（out-of-sample 予測確率）＋VLM 2系合議で既存ラベルの疑義を検出し、上位N件を目視スポットチェックして的中率（precision@N）を測定。gold 部分集合で人×VLM の κ を算出。
+cleanlab（out-of-sample 予測確率）＋VLM 2系合議で既存ラベルの疑義を検出し、上位N件を目視スポットチェックして的中率（precision@N）を測定。gold 部分集合で人×VLM の κ を算出。gold 作成は `gold_annotations` スキーマ（§5）で 50〜100 枚のパイロット → boundary_flag の収穫とガイドライン改訂 → 本番の2パス制。パイロット結果で未決2件（food×drink 同格時の優先順位、unjudgeable の運用出力先。D13）を確定し、taxonomy v0.2 と rulebook に反映する。VLM 合議のシルバーは葉で不一致でも第1階層で一致していれば二値シルバーとして保持する。
 検証命題: 既存ラベルの誤り率推定と検出的中率。
-完了条件: `reports/m4_label_audit.md`
+完了条件: `reports/m4_label_audit.md`（パイロットの boundary_flag 率・unjudgeable 率を含む）
 
 ### M5 ルール変更即応
 rulebook を v1.1 に改版（例: inside×food の優先規則変更）→ 再学習なしで判定表・プロンプトを再生成 → eval 再実行 → ラベルフリップ数と影響差分レポートを自動生成。
@@ -106,7 +122,7 @@ rulebook を v1.1 に改版（例: inside×food の優先規則変更）→ 再�
 完了条件: `reports/m5_rulebook_change.md`（版間diff、フリップ表）
 
 ### M6（任意）蒸留
-VLM合議の soft label で linear probe → LP-FT、WiSE-FT 補間。委譲率の低下を実測。
+VLM合議の soft label で linear probe → LP-FT / LoRA、WiSE-FT 補間。階層を負例の難度マップとして使い（第1階層境界＝food 葉 × 誤爆吸収クラスを hard negative、ブランチ内兄弟を細粒度用）、SigLIP 系の sigmoid 損失ではタクソノミー距離で負例を重み付ける。委譲率の低下を実測。クラス内画像埋め込みのクラスタリング（k-means / 残差量子化）によるサブクラス候補の発見と、LeGrad 等の帰属可視化による誤爆根拠の記録も本Mで行う（[taxonomy.md](taxonomy.md) §5）。
 完了条件: `reports/m6_distill.md`
 
 ### M7（任意）self-improving rulebook loop
@@ -147,6 +163,9 @@ M4の監査不一致集合を訓練信号に、GEPA / ProTeGi 型のテキスト
 | D8 | ルール変更ゲート | 版間フリップ率、ペア別影響 | フリップ率>基準で人手レビュー必須 | M5 | rulebook運用 |
 | D9 | rulebook自動最適化の採否 | 同一不一致集合を入力にした自動改訂 vs 人手改訂の対照比較、PR頻度・却下率・レビュー所要時間の計測 | 人手比の改善幅/コスト、holdout rotation間の安定性、承認ゲート通過率。却下率高止まり・レビュー負担>改善価値なら撤退（手動M5へ復帰） | M7 | 監査ループに接続 |
 | D10 | 委譲規則のconformal化の採否 | 予測集合ベース委譲 vs しきい値委譲の比較、層別被覆検証 | 同一被覆での委譲率減、全層で被覆充足 | M2 | 同左 |
+| D11 | Stage1 の階層スコアリング採否（フラット5クラス vs 葉スコア→ブランチ max） | プロンプト類似度行列、方式別の P/R/F1・混同行列・margin 分布 | food precision を落とさず macro-F1 または food F1 が改善 | M1 | 同一スクリプト |
+| D12 | 第1階層の委譲方式（branch_margin 閾値 vs 直列二値ハードゲート） | 同一 eval での risk–coverage、誤ゲートによる food 取りこぼし率 | 同一委譲率で残存誤りが少なく、取りこぼしが基準以下 | M2 | 同左 |
+| D13 | taxonomy / rulebook の未決事項（誤爆吸収クラスの列挙、food×drink 同格時の優先順位、unjudgeable の運用出力先） | food 予測の precision 監査内訳、パイロットアノテーションの boundary_flag 率・unjudgeable 率 | 誤爆源の累積被覆率、同格衝突頻度、unjudgeable 率で運用先を決定 | M1・M4 | 自データで再監査 |
 
 **移植性要件**: 分析コードは `analysis/` に判断ID付きで置く。SQLはDuckDB/BigQueryの両方で動く書き方に限定し（方言依存の関数を避ける）、接続とテーブル名はconfig注入とする。これにより実データ側では接続先の差し替えだけで同一分析が走る。
 
