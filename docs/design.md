@@ -28,6 +28,7 @@ single source (ポリシー): rulebook.md (versioned)            ─▶ 優先�
 - Stage2: しきい値＋優先順位ルールの決定的判定層。モデルなし、コードとconfigのみ。品質規則（ボケ等）と運用写像（unjudgeable の扱い）もこの層の管轄
 - Stage3: 委譲スライスのみ VLM（Gemini）で構造化出力判定。自己一致または2モデル一致で確定、不一致は irreducible
 - 監査: バッチでラベル・予測を検品（cleanlab、VLM合議、gold κ）
+- 対象外画像の扱い: 対象外（5 クラスのどれにも該当しない）画像は残余クラスへ流さず、処理方式の比較で決める。P0 ゲートなし／P1 Stage1 が food と予測した画像のみ距離信号で再判定／P2 Stage1 前の全画像ゲート。P2 は T4/D12 が退ける直列ハードゲートの構造であり、G0 では誤ゲートの回収不能コストを実測する比較対象。採否と方式は D14（G0）
 
 ## 2. データ
 
@@ -42,6 +43,11 @@ single source (ポリシー): rulebook.md (versioned)            ─▶ 優先�
   - gold（M4）は監査対象の work 側と、κ・内容精度の評価用に eval 側の両方へ付与する。gold の付与は分割の用途を変えない（eval に gold が付いても探索には使わない）
 - ラベルの扱い: Yelp付与ラベルは「来歴の混在した既存ラベル」とみなす（実務で頻出する状況の一般形）。gold は M4 で目視スポットチェックした部分集合のみとする
 - gold の記録粒度: 運用クラス（第2階層）のみを記録し、第1階層（food / non-food）は導出する。内容（content_label）・判定可能性（quality）・判定者の迷い（boundary_flag）・属性（food_visible）は別フィールドで直交に持ち、残余クラスへ混載しない。アノテーションは 50〜100 枚のパイロット → ガイドライン改訂 → 本番の2パス制（[taxonomy.md](taxonomy.md) §4）
+- 外部の公開画像データ（Open Images, Wikimedia Commons, COCO, CORD 等）を非料理の評価候補として使う（G0）。画像は非同梱。公開 ID・sha256・ファイル単位のライセンスを `configs/ood_sources.lock` に記録し、reports に画像を載せない
+- Yelp 規約への対応: Data（photo_id・business_id・caption・ラベル行）は git に置かず、sha256 と config・seed のみを置く。reports は集計値のみ。公開前の扱い（学術利用該当性・公開前審査の要否）は結果 PR を draft にして確認後にマージする。規約の版と DL 日を reports のフッタに記録する
+- eval の natural スライス（上記の層化 2,000 枚と併設する側）は G0 の要件（eval の food ≥ 3,000。1% 損失 = 30 枚）を満たす規模に拡大する（D7）
+- 分割キーは `business_id` と近重複群（sha256 完全一致 → pHash Hamming ≤ 8 → 埋め込み余弦 ≥ 0.95）の連結成分。同一店舗・同一群は分割を跨がない
+- 外部画像の前処理は Yelp と同分布（長辺サイズ・JPEG 品質・EXIF 除去）に統一する
 
 ## 3. 技術スタックと実務転用マップ
 
@@ -83,9 +89,13 @@ single source (ポリシー): rulebook.md (versioned)            ─▶ 優先�
 
 - `labels(photo_id, label_source, label, provenance, ts)` — label は第2階層クラス。gold は `gold_annotations` から `content_label` を射影して `label_source='gold'` で投入
 - `gold_annotations(photo_id, content_label, quality, boundary_flag, food_visible, secondary, annotator, guideline_version, ts)` — 第1階層は持たない（導出のみ）。`content_label ∈ 第2階層 ∪ {unjudgeable}`、`quality ∈ {ok, degraded, unjudgeable}`
+- `scope_annotations(photo_id, source, content, operational_truth, subject_type, boundary_flag, quality, dup_group_id, role, sampling_prob, license_short, attribution, source_url, sha256, annotator, guideline_version, ts)` — `gold_annotations` の拡張（G0）。`content ∈ {food, drink, non_food, mixed, unjudgeable}` は被写体の内容（属性）。`operational_truth ∈ 第2階層 ∪ {out_of_scope}` は運用上の正解で、第1階層は `operational_truth` から導出し `content` からは導出しない。`out_of_scope` はアノテーション専用の残余値で Stage1 のクラスではない。迷いは `boundary_flag`（クラスへ流さない）。`subject_type ∈ {doll_character_statue, amusement_tourist, signage_decor_goods, person_animal, vehicle_street, near_food_nonfood, texture_document_screen, food_contrast, other}`、`source ∈ {yelp, open_images, commons, coco, places365, cord, dtd, screenspot}`（1 画像 1 源）、`role ∈ {tune, work, eval}`。`annotator` は仮名 ID。ライセンス列は外部源のみ
 - `predictions(run_id, photo_id, stage, probs_json, margin, branch_margin, primary, secondary, flag, model_id, cost_tokens, ts)` — `probs_json` は第2階層の確率（葉スコアを含めてよい）、`branch_margin = S_food − S_non`
 - `runs(run_id, git_sha, taxonomy_version, rulebook_version, eval_set_id, model_id, config_json, metrics_json, wandb_url, ts)`
 - `eval_sets(eval_set_id, role, photo_ids_hash, definition, created_at)` — `role ∈ {tune, work, eval}`（§2 の用途分離を記録。runs は評価に使った `eval_set_id` を刻印する）
+- `ood_sets(ood_set_id, source, subject_type, role, n, ids_sha256, lock_path, created_at)` — 非料理評価集合の定義（G0）
+- `ood_scores(run_id, photo_id, source, mode, method_id, encoder_id, score, role, fold_axis, fold_id, ts)` — 検出器スコア。向きは大＝対象内（`mode ∈ {P1, P2}`）
+- `gate_decisions(run_id, photo_id, mode, method_id, threshold_id, decision, stage1_pred, final_label, ts)` — 動作点ごとの棄却／通過と最終ラベル
 - 推移閉包用に `taxonomy_nodes(node_id, level, parent_id, ancestors)` を marts に持ち、「food の全子孫」を1クエリで取れるようにする
 
 評価は2系統: 内容精度（`quality='unjudgeable'` を除外）と運用出力精度（運用写像による導出込み）。
@@ -93,8 +103,18 @@ single source (ポリシー): rulebook.md (versioned)            ─▶ 優先�
 ## 6. マイルストーン
 
 ### M0 セットアップ
-uv環境、データ取得と規約確認、サンプリングと tune / work / eval の分割確定（§2。`business_id` 単位の非交差テストを含む）と eval 凍結、三層テーブル初期化、Tracker アダプタ実装と W&B project／GCP プロジェクト（Vertex AI Experiments）の初期化、`tracking` config の縮退動作テスト（wandb のみ／vertex のみ／none で完走すること）、Gemini の現行モデルIDを確認して config にピン留め（"latest" 系エイリアス禁止）。`taxonomy/` の導入（taxonomy.yaml v0.1、build / viz の検証通過、負のテスト、Makefile または pre-commit への束ね）。
+uv環境、データ取得と規約確認、サンプリングと tune / work / eval の分割確定（§2。`business_id` 単位の非交差テストを含む）と eval 凍結、三層テーブル初期化、Tracker アダプタ実装と W&B project／GCP プロジェクト（Vertex AI Experiments）の初期化、`tracking` config の縮退動作テスト（wandb のみ／vertex のみ／none で完走すること）、Gemini の現行モデルIDを確認して config にピン留め（"latest" 系エイリアス禁止）。`taxonomy/` の導入（taxonomy.yaml v0.1、build / viz の検証通過、負のテスト、Makefile または pre-commit への束ね）。G0 に必要な最小構成（環境・taxonomy v0.1・埋め込み・分割・tracking）を先行し、rulebook 未導入の間は reports のフッタに rulebook_version を「未導入」と記す。
 完了条件: `reports/m0_setup.md`（データ統計・クラス分布・分割定義と非交差検証結果・eval定義・taxonomy_version）
+
+### G0 非料理画像の距離信号による識別（M0 後。M1 と並行可）
+中心の問い: 分類スコアでは food に見える非料理画像が、料理画像の特徴分布（kNN／Mahalanobis 距離）からは外れているか。正しい料理の棄却を同じ水準に揃えたとき、距離は分類スコアより多くの誤混入を検出できるか。
+比較する処理方式（既定なし）: P0 ゲートなし（Stage1 argmax）／P1 Stage1 = food の画像のみ検出器で再判定（他クラスの出力は不変。T4 と整合）／P2 Stage1 前の全画像ゲート（T4/D12 が退ける直列ハードゲート。他クラス損失・層 B の誤棄却というコストを実測する比較対象）。
+主構成 8 = E1 × {MSP, kNN, Mahalanobis++, C3 二値ヘッド} × {P1, P2}。E1 = open_clip ViT-B-16 / datacomp_xl_s13b_b90k（hf_hub laion/CLIP-ViT-B-16-DataComp.XL-s13B-b90K）、副次 E2 = google/siglip2-base-patch16-224。revision ハッシュは B-a でピン留め。主構成 E1×kNN×P1 は α=0.05、残り 7 構成は Holm。
+主指標: 非料理→food 誤受理率、誤混入削減率（合算・型別）、料理損失（名目／確認済み）、層 B の P1 除去率・P2 通過率（§7）。動作点は tune_cal の「正しく food」のスコア昇順 1% 位置（副: 0.5%、2%）。
+成立条件: 層 A eval の合算 n_before ≥ 40（型別は ≥ 10 のみ評価）。未満なら主比較は評価不能とし記述的知見として報告する。主検定は H0: p ≤ 0.25 の片側正確二項検定。帰結は採用候補／保留／不採用／評価不能の表（`docs/g0_nonfood_plan.md` §8）。
+検証命題: 同じ料理損失（1%）で距離信号が分類スコアより多くの誤混入を除去するか。P1 で足りるか（全画像ゲート P2 は不要か）。
+事前登録: `docs/g0_nonfood_plan.md`（凍結タグ `g0-freeze-v1`。以後の変更は逸脱記録のみ）。eval は最後の 1 回だけ使う。VLM（Gemini）は G0 では使わない（評価ラベルにも灰色域再判定にも使わない）。追加比較（NegLabel、SAL 簡略版、灰色域 VLM、母集団の混入率）は G1 以降。
+完了条件: `reports/g0_nonfood_gate.md`（冒頭に記述分析の要約・主指標・帰結表。フッタに Yelp 規約の版・DL 日を追記）
 
 ### M1 ゼロショットベースライン
 最初にプロンプト埋め込みの余弦類似度行列（画像不要・テキストのみ）で兄弟プロンプトの過接近や誤爆吸収プロンプトの food 側偏りを診断し、プロンプト文を修正する。そのうえでエンコーダ2種以上でクラス別 P/R/F1、混同行列、margin 分布を、フラット5クラス方式と階層方式（葉スコア→ブランチ max）の両方で測る（D11）。food 予測画像 100 枚程度の precision 監査で誤爆の出所内訳を取り、誤爆吸収クラスの初期列挙を taxonomy v0.x に反映する（D13）。
@@ -152,6 +172,10 @@ M4の監査不一致集合を訓練信号に、GEPA / ProTeGi 型のテキスト
 - cost/image: 入力トークン＝258（両辺≤384pxへリサイズ）＋プロンプト分。モデル単価×トークンで算出し、レポートに必ず概算を記載
 - macro-F1 / クラス別 P/R/F1、混同行列
 - κ: gold 部分集合における人×VLM の一致度（監査モデルの較正指標）
+- 非料理→food 誤受理率: 層 A（対象外の非料理）のうち、ゲートを通過し food として確定した枚数の割合。ゲート前（P0）と後で報告（G0）
+- 誤混入削減率: r / n_before（n_before = P0 が food 確定した層 A 枚数、r = そのうちゲートが除去した枚数）。合算と型別（G0）
+- 料理損失（名目／確認済み）: 名目 = eval の「正しく food」（ラベル food ∧ P0 = food）のうち棄却された率。確認済み = R_true / (R_true + N_pass·q̂)（R_true: 棄却された名目 food のうち目視で content=food、q̂: 通過側無作為抽出の content=food 率）（G0）
+- 層 B の P1 除去率・P2 通過率: 対象内の非料理（層 B）について、P1 = P0 が food と判定した層 B のうち P1 が food から外した率（高いほど良い）、P2 = 全画像ゲートを通過した率（片側 95% 下限で判定）（G0）
 
 ## 8. 設計判断を決める分析（decision matrix）
 
@@ -172,6 +196,7 @@ M4の監査不一致集合を訓練信号に、GEPA / ProTeGi 型のテキスト
 | D11 | Stage1 の階層スコアリング採否（フラット5クラス vs 葉スコア→ブランチ max） | プロンプト類似度行列、方式別の P/R/F1・混同行列・margin 分布 | food precision を落とさず macro-F1 または food F1 が改善 | M1 | 同一スクリプト |
 | D12 | 第1階層の委譲方式（branch_margin 閾値 vs 直列二値ハードゲート） | 同一 eval での risk–coverage、誤ゲートによる food 取りこぼし率 | 同一委譲率で残存誤りが少なく、取りこぼしが基準以下 | M2 | 同左 |
 | D13 | taxonomy / rulebook の未決事項（誤爆吸収クラスの列挙、food×drink 同格時の優先順位、unjudgeable の運用出力先） | food 予測の precision 監査内訳、パイロットアノテーションの boundary_flag 率・unjudgeable 率 | 誤爆源の累積被覆率、同格衝突頻度、unjudgeable 率で運用先を決定 | M1・M4 | 自データで再監査 |
+| D14 | 非料理画像の除外方式（ゲートなし／food 候補のみ再判定／全画像ゲート）と検出器の候補選定 | 同一料理損失（1%）での誤混入削減率の片側正確二項検定（Holm）、料理損失の確認済み上限、層 B の通過率、LOTO/LOSO、ソース対照 | 採用候補／保留／不採用の帰結表（docs/g0_nonfood_plan.md §8）。結論は候補選定まで | G0 | 同一スクリプトを自データの予測ログへ |
 
 **移植性要件**: 分析コードは `analysis/` に判断ID付きで置く。SQLはDuckDB/BigQueryの両方で動く書き方に限定し（方言依存の関数を避ける）、接続とテーブル名はconfig注入とする。これにより実データ側では接続先の差し替えだけで同一分析が走る。
 

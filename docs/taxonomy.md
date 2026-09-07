@@ -52,6 +52,8 @@ zero-shot 分類で food の precision が問題になるとき、素朴な対�
 | food_visible | bool | 属性の正式フィールド化（分割と別軸で保持） |
 | secondary | クラス名（任意） | 顕著な副被写体。「food は写っているが主被写体でない」画像を hard スライスとして切り出せる |
 
+対象外（5 クラスのどれにも該当しない）画像はアノテーション専用の残余値 out_of_scope として scope_annotations（design.md §5）に記録し、Stage1 のクラスや残余クラスへは流さない（G0 / D14）。
+
 `boundary_flag` は人のアノテーション側の不確実性であり、予測側の `flag ∈ {clear, rule_resolved, irreducible}`（design.md §4）とは別物。前者はゴールド作成時、後者はカスケード出力時に付く。
 
 運用出力は導出で作る: quality が unjudgeable なら残余（または除外。運用先は要決定事項 D13）、それ以外は content_label。導出は細→粗の一方向にしか効かないため、記録は常に細かい方で行う。評価は内容精度（unjudgeable 除外）と運用出力精度（導出込み）の2系統に分かれる。

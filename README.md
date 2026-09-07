@@ -9,6 +9,7 @@
 1. **カスケードの費用対効果** — 確信できる多数を安いエンコーダで確定し、曖昧な少数だけVLMへ委譲すれば、全量VLM比のわずかなコストで同等精度圏に入ること（M3で実測）
 2. **既存ラベルは監査できる** — cleanlab＋VLM合議で来歴不明ラベルの疑義を検出し、目視スポットチェックで的中率を測れること（M4）
 3. **設計は差し替え可能** — runs正本パターン（記録の正本はローカルparquet、W&B と Vertex AI Experiments へ二重送出）と rulebook 単一ソースにより、トラッカー差し替えとルール変更が再学習なしで完結すること（M5）
+4. **非料理画像の除外は料理混入で測る** — 対象外画像の価値は『その他』への回収率ではなく、非料理→food の誤混入をどれだけ減らし、正しい料理を何枚失うかで判定する（G0）
 
 ## アーキテクチャ
 
@@ -27,13 +28,14 @@ single source (ポリシー): rulebook.md            ─▶ 優先規則 / 判�
 
 ## 設計判断はデータ分析で下す
 
-カスケード採否・しきい値粒度・較正要否・既存ラベル再利用可否・階層スコアリング採否など13の設計判断（D1–D13）は事前に決め打ちせず、[docs/design.md](docs/design.md) §8 の decision matrix に定義した分析と判断基準で決定し、reports/ に意思決定ログ（基準値・実測値・採否）を残す。分析コードは DuckDB / BigQuery 両対応で書き（`analysis/`、M1 以降で作成）、**公開データで方法論を確立 → 同一スクリプトを自組織のデータに向けて再実行**する二段構えの移植性を持つ。
+カスケード採否・しきい値粒度・較正要否・既存ラベル再利用可否・階層スコアリング採否など14の設計判断（D1–D14）は事前に決め打ちせず、[docs/design.md](docs/design.md) §8 の decision matrix に定義した分析と判断基準で決定し、reports/ に意思決定ログ（基準値・実測値・採否）を残す。分析コードは DuckDB / BigQuery 両対応で書き（`analysis/`、M1 以降で作成）、**公開データで方法論を確立 → 同一スクリプトを自組織のデータに向けて再実行**する二段構えの移植性を持つ。
 
 ## マイルストーン
 
 | M | 内容 | 完了条件 |
 |---|---|---|
 | M0 | セットアップ・eval凍結・トラッカー fan-out・taxonomy 導入 | reports/m0_setup.md |
+| G0 | 非料理画像の距離信号による識別（M0 後、M1 と並行可）— 分類スコアでは food に見える非料理を、正しい料理の棄却を同じ水準に揃えたうえで、料理分布からの距離で分類スコアより多く除外できるか。事前登録 docs/g0_nonfood_plan.md | reports/g0_nonfood_gate.md |
 | M1 | ゼロショット基線・フラット vs 階層・混同ペアの定量特定 | reports/m1_baseline.md |
 | M2 | 判定層・risk–coverage・しきい値探索 | reports/m2_decision_layer.md |
 | M3 | カスケード vs 全量VLM の精度・コスト実測比較 | reports/m3_cascade_vs_vlm.md |
@@ -66,9 +68,10 @@ taxonomy/            # taxonomy.yaml（クラス定義の正本）＋ build/viz 
 rulebook.md          # 分類意図・優先順位ルール・品質規則（ポリシーの単一ソース、semver管理）
 configs/             # しきい値・モデルID（ピン留め）・API呼び出し上限
 src/cascade/         # stage1_encode / stage2_decide / stage3_escalate / audit / eval
-analysis/            # 設計判断 D1–D13 の分析（DuckDB / BigQuery 両対応）
+analysis/            # 設計判断 D1–D14 の分析（DuckDB / BigQuery 両対応）
 reports/             # 各Mの自動生成レポート（run_id・git sha・taxonomy/rulebook 版・概算コスト記載）
 docs/design.md       # 設計の正本
+docs/g0_nonfood_plan.md  # G0 事前登録（凍結タグ g0-freeze-v1）
 docs/diagrams/       # design.md の可視化（Mermaid、Miro ボードの生成元）
 docs/diagram-guidelines.md  # 図の情報設計規約
 docs/taxonomy.md     # 分類体系・アノテーション設計ノート
@@ -79,6 +82,7 @@ CLAUDE.md            # 実装時の制約・規約
 ## 注意事項
 
 - Yelp Open Dataset の画像・生データはリポジトリに含まれない。README・reports にも画像は掲載しない（教育目的での利用、再配布不可）
+- Yelp Dataset の規約に従い、photo_id 等の Data はリポジトリに置かず（sha256・config・seed のみ）、reports は集計値のみを載せる。結果の公開はユーザが規約（学術利用・公開前審査）を確認してから行う
 - W&B は Free プラン（個人プロジェクト限定）の範囲で使用し、画像はアップロードしない
 - 外部API呼び出しは config の上限内で実行し、各レポートに概算コストを記載する
 - 特定企業の事例・数値は含まない

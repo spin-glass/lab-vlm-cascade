@@ -1,6 +1,6 @@
 # docs/diagrams/
 
-設計の可視化。**正本は [docs/design.md](../design.md)** であり、本ディレクトリの図はその可視化にすぎない。design.md を改訂したら、対応する図の Mermaid を更新し、Miro ボードへ再生成する。
+設計の可視化。**正本は [docs/design.md](../design.md)** であり、本ディレクトリの図はその可視化にすぎない。design.md を改訂したら、対応する図の Mermaid を更新し、Miro ボードへ再生成する。**注**: design.md の G0（P0/P1/P2 の比較、D14）は現行の図に未反映。情報設計案を提示し合意を得てから作図する（[docs/diagram-guidelines.md](../diagram-guidelines.md)）。
 
 各図は Mermaid フェンス入りの Markdown（GitHub 上でそのまま描画される）。Miro へは同一の Mermaid ソースから MCP（`diagram_create_mermaid`）で生成しており、Miro 上で直接編集しない。
 
@@ -11,7 +11,7 @@
 | [milestones.md](milestones.md) | マイルストーンロードマップ（M0–M7、対応する設計判断ID） | design.md §6, §8 |
 | [m7-approval-loop.md](m7-approval-loop.md) | M7 self-improving loop の PR承認ゲート | design.md §6 M7 |
 
-decision matrix（D1–D13）の表は design.md §8 が正本のため、ここには置かない（Miro ボード上にのみ表として展開）。
+decision matrix（D1–D14）の表は design.md §8 が正本のため、ここには置かない（Miro ボード上にのみ表として展開）。
 
 ## Miro ボード
 
@@ -28,7 +28,7 @@ decision matrix（D1–D13）の表は design.md §8 が正本のため、ここ
 | 02 進め方 | milestones 図 |
 | 03 判定の詳細 | decision-flow 図 |
 | 04 ガバナンス | m7-approval-loop 図（M7・任意） |
-| 05 判断基準 | decision matrix 表（※ボード上は D1–D10 の旧版。design.md §8 は D1–D13 に拡張済みで、ボードの再生成が未実施） |
+| 05 判断基準 | decision matrix 表（※ボード上は D1–D10 の旧版。design.md §8 は D1–D14 に拡張済みで、ボードの再生成が未実施） |
 | ZZ ARCHIVE | 旧レイアウト。Miro の API では図を削除できないため隔離してある。参照しない |
 
 01→02 だけで全体像は掴める。03 以降は実装・詳細検討向け。

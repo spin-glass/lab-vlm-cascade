@@ -115,6 +115,76 @@ design.md および reports/ で数値・設計主張をする際の引用元。
 - **[Hedden22]** Hedden, H. *The Accidental Taxonomist*, 3rd ed. Information Today, 2022.
   — 主張: 分類体系設計の実務原則（is-a のみ、単一分割基準、相互排他、網羅）。§2 設計原理の出典。
 
+## 11. 対象外・非料理画像の検出（G0 / D14 の根拠）
+
+分類スコアだけでは「用意されたクラスの中では food が最も近い」としか言えず、非料理画像を識別できない。G0 は料理画像の特徴分布からの距離（kNN / Mahalanobis++）が分類スコア（MSP）より多くの誤混入を検出できるかを、P0（ゲートなし）／P1（food 候補のみ再判定）／P2（全画像ゲート）の比較で実測する。以下はスコア定義・検出器・評価プロトコル・データ源の出典。
+
+### スコアと検出器（主構成 8 = E1 × {MSP, kNN, Mahalanobis++, C3} × {P1, P2}）
+
+- **[MSP17]** Hendrycks & Gimpel. "A Baseline for Detecting Misclassified and Out-of-Distribution Examples in Neural Networks." ICLR 2017. https://arxiv.org/abs/1610.02136
+  — 主張: 最大 softmax 確率を誤分類・OOD 検出の基準線とする。本リポの P0 / P1 が依拠する分類スコア基準。
+- **[Energy20]** Liu, Wang, Owens & Li. "Energy-based Out-of-distribution Detection." NeurIPS 2020. https://arxiv.org/abs/2010.03759
+  — 主張: energy score E(x) = −T·logsumexp(f/T) は softmax より OOD と ID の分離が良い。G0 ではアブレーション。
+- **[OE19]** Hendrycks, Mazeika & Dietterich. "Deep Anomaly Detection with Outlier Exposure." ICLR 2019. https://arxiv.org/abs/1812.04606
+  — 主張: 外部の負例（outlier）に対して既存クラス上の一様分布を目標とする補助損失（λ=0.5）を加えると未知の外れにも汎化する。副次構成 C1（5-way＋OE）の定義。
+- **[MCM22]** Ming, Cai, Gu, Sun, Li & Li. "Delving into Out-of-Distribution Detection with Vision-Language Representations." NeurIPS 2022. https://arxiv.org/abs/2211.13445
+  — 主張: CLIP のクラスプロンプト類似度に softmax（τ=1）を取った最大値（Maximum Concept Matching）で zero-shot OOD 検出。CLIP 系の画像テキストエンコーダに MSP を適用したものであり、本リポの MSP 検出器の実体。τ=0.01 はアブレーション。
+- **[kNN22]** Sun, Ming, Zhu & Li. "Out-of-Distribution Detection with Deep Nearest Neighbors." ICML 2022. https://arxiv.org/abs/2204.06507
+  — 主張: L2 正規化した特徴の k 近傍距離による非パラメトリック検出。正規化が本質的で、分布仮定を置かない。本リポの kNN 検出器（k=50、tune_fit バンク）。
+- **[MahaPP25]** Mueller & Hein. "Mahalanobis++: Improving OOD Detection via Feature Normalization." ICML 2025 (PMLR 267). https://arxiv.org/abs/2505.18032
+  — 主張: 特徴ノルムのばらつきがガウス仮定を壊す。L2 正規化後にクラス別平均＋共有共分散を推定すると 44 モデルで一貫して改善。本リポの Mahalanobis++（リッジ 1e-6）。素の Mahalanobis はアブレーション。
+
+### 評価プロトコル
+
+- **[OpenOOD23]** Zhang et al. "OpenOOD v1.5: Enhanced Benchmark for Out-of-Distribution Detection." arXiv:2306.09301（DMLR 採録）. https://arxiv.org/abs/2306.09301
+  — 主張: AUROC / FPR@95 を標準指標とし、OOD を near / far に区分して報告する。区分は ID との意味差・難易度に基づく便宜的なものであり、本リポでは収集画像を near / far と決めつけず距離で実測する（型ごとに「遠く分離できる／料理側に入り込む」を記録）。
+
+### 追加比較の候補（G0 では実施しない。A / D / E は design.md §6 G0 節）
+
+- **[NegLabel24]** Jiang et al. "Negative Label Guided OOD Detection with Pretrained Vision-Language Models." ICLR 2024. https://arxiv.org/abs/2403.20078
+  — 主張: WordNet から ID ラベルと意味的に遠い負ラベル約 1 万語を選び、正負ラベルとの類似度比でスコア化する。追加比較 A。
+- **[CSP24]** Chen, Gao & Xu. "Conjugated Semantic Pool Improves OOD Detection with Pre-trained Vision-Language Models." NeurIPS 2024. https://arxiv.org/abs/2410.08611
+  — 主張: 負ラベルの語彙プールを上位語×形容詞の組合せに拡張して被覆を上げる。A の派生。
+- **[AdaNeg24]** Zhang & Zhang. "AdaNeg: Adaptive Negative Proxy Guided OOD Detection with Vision-Language Models." NeurIPS 2024. https://arxiv.org/abs/2410.20149
+  — 主張: 固定の負ラベルではなく、テスト時に実際の OOD 画像分布に合わせた負プロキシを適応的に構成する。A の派生。
+- **[NegRefine25]** Ansari, Wang & Xiong. "NegRefine: Refining Negative Label-Based Zero-Shot OOD Detection." ICCV 2025. https://arxiv.org/abs/2507.09795
+  — 主張: 負ラベル集合から ID の下位概念・固有名詞を除去し、複数ラベルに合致する画像のスコアリングを改良する。A を実装する場合の除外規則の根拠。
+- **[EOE24]** Cao et al. "Envisioning Outlier Exposure by Large Language Models for Zero-Shot OOD Detection." ICML 2024. https://arxiv.org/abs/2406.00806
+  — 主張: LLM に ID クラスに近い外れクラス名を生成させ（β=0.25、L=500）、実画像なしで outlier exposure を模す。文献値は Food-101 等が対象で、本リポの期待値には使わない。
+- **[WOODS22]** Katz-Samuels, Nakhleh, Nowak & Li. "Training OOD Detectors in their Natural Habitats." ICML 2022. https://arxiv.org/abs/2202.03299
+  — 主張: 運用環境の未ラベル wild 混合（ID＋OOD）を制約付き最適化で活用し、外れ候補を抽出して検出器を学習する。追加比較 D の原型。
+- **[SCONE23]** Bai et al. "Feed Two Birds with One Scone: Exploiting Wild Data for Both Out-of-Distribution Generalization and Detection." ICML 2023. https://arxiv.org/abs/2306.09158
+  — 主張: wild データで OOD 汎化と OOD 検出を同時に扱う。D の系譜。
+- **[SAL24]** Du, Fang, Diakonikolas & Li. "How Does Unlabeled Data Provably Help Out-of-Distribution Detection?" ICLR 2024. https://arxiv.org/abs/2402.03502
+  — 主張: 未ラベル混合から勾配空間の特異値分解で外れ候補を分離し、二値分類器を学習する（SAL）。誤り保証つき。追加比較 D（簡略版・独自実装）の直接の型。
+- **[Medix25]** Abbas, Falahati, Goli & Amiri. "Medix: Out-of-Distribution Detection from Unlabeled Wild Data via Robust Gradient Statistics." TMLR. https://arxiv.org/abs/2510.06505
+  — 主張: SAL の勾配統計を中央値ベースで頑健化し、混入率が高い wild 集合でも安定させる。D の改良候補。
+- **[ReGuide25]** Kim, Lee & Hwang. "Reflexive Guidance: Improving OoDD in Vision-Language Models via Self-Guided Image-Adaptive Concept Generation." ICLR 2025. https://arxiv.org/abs/2410.14975
+  — 主張: VLM 自身が画像適応的に近傍・外れの概念候補を生成し、それを手がかりに OOD 判定する。追加比較 E（灰色域の VLM 再判定）。
+- **[LLMVLM25]** Lee, Chen & Wu. "Harnessing Large Language and Vision-Language Models for Robust Out-of-Distribution Detection." ACML 2025 (PMLR 304). https://arxiv.org/abs/2501.05228
+  — 主張: LLM 生成の負概念と VLM の視覚特徴を組み合わせ、far と near の OOD 検出を両立させる。A と E の接続例。
+
+### 評価用データ源（外部の非料理候補・ソース対照。ライセンスはファイル単位で記録）
+
+- **[OpenImages20]** Kuznetsova et al. "The Open Images Dataset V4: Unified image classification, object detection, and visual relationship detection at scale." IJCV 2020. https://storage.googleapis.com/openimages/web/index.html
+  — 主張: 人手検証済みの画像レベルラベルからクラス（MID）別に候補抽出できる。画像は CC BY 2.0、注釈は CC BY 4.0。層 A（人形・像、遊具、看板、人物・動物、乗り物）とソース対照正例（Food / Dish）の主な源。
+- **[COCO14]** Lin et al. "Microsoft COCO: Common Objects in Context." ECCV 2014. https://cocodataset.org
+  — 主張: 物体注釈（面積・iscrowd・カテゴリ）で person / vehicle 主体の画像を条件抽出できる。注釈は CC BY 4.0、画像は Flickr のライセンス ID を画像ごとに記録する。
+- **[Places365-17]** Zhou, Lapedriza, Khosla, Oliva & Torralba. "Places: A 10 Million Image Database for Scene Recognition." TPAMI 2017. http://places2.csail.mit.edu/
+  — 主張: シーンカテゴリ（street 等）の画像源。G0 では任意（時間が無ければ落とす）。
+- **[DTD14]** Cimpoi, Maji, Kokkinos, Mohamed & Vedaldi. "Describing Textures in the Wild." CVPR 2014. https://www.robots.ox.ac.uk/~vgg/data/dtd/
+  — 主張: テクスチャ画像。補助 far（指標は food 誤受理率のみ）の任意源。
+- **[CORD19]** Park et al. "CORD: A Consolidated Receipt Dataset for Post-OCR Parsing." NeurIPS 2019 Workshop on Document Intelligence. https://huggingface.co/datasets/naver-clova-ix/cord-v2
+  — 主張: 領収書画像 1,000 枚（CC BY 4.0、HF `naver-clova-ix/cord-v2`、revision 固定）。補助 far の源。
+- **[Commons]** Wikimedia Commons. "Commons:Licensing" および MediaWiki API（`imageinfo` の `extmetadata`）. https://commons.wikimedia.org/wiki/Commons:Licensing
+  — 主張: ファイル単位のライセンス・帰属を API から取得できる。カテゴリ探索は非再帰（depth ≤ 2）、User-Agent ポリシー遵守、500px サムネイル。人形・マスコット・食品サンプル・玩具の食品など near-food 候補の源。
+- **[YelpTOU23]** Yelp. "Yelp Dataset Terms of Use" (2023-07-07). https://s3-media0.fl.yelpcdn.com/assets/srv0/engineering_pages/f64cb2d3efcc/assets/vendor/Dataset_User_Agreement.pdf
+  — 主張: 学術利用限定、Data の再配布・表示禁止、公開前の Yelp 審査。design.md §2 の対応（ID 行を git に置かない、reports は集計値のみ、結果 PR は draft）の根拠。規約の版と DL 日を reports フッタに記録する。
+- **[YelpBlog15]** Yelp Engineering Blog. "How We Use Deep Learning to Classify Business Photos at Yelp." 2015-10-19. https://engineeringblog.yelp.com/2015/10/how-we-use-deep-learning-to-classify-business-photos-at-yelp.html
+  — 主張: Yelp の 5 クラス写真ラベル（food / drink / menu / inside / outside）は CNN 分類器が付与したもの。本リポで Yelp ラベルを「名目ラベル」として扱い、棄却側の全数目視と通過側の無作為抽出で確認済み損失を別に推定する根拠。
+
+- 注記: 上記文献の性能値（AUROC・FPR@95 等）はベンチマーク固有であり、本リポの期待値・判定基準には使わない。判定基準は事前登録（docs/g0_nonfood_plan.md、D14）の数値のみ。
+
 ## 引用規約
 
 reports/ 内で数値主張をする際は上記キー（[VJ01] 等）で引用する。本ファイルにない主張を導入する場合は、一次文献を確認してからここに追記する。
