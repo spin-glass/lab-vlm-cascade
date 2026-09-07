@@ -1,0 +1,215 @@
+# 外部候補画像の取得設定（G0 層 A / ソース対照正例 / 補助 far）。design.md §2・§5、docs/g0_nonfood_plan.md。
+# 外部 ID・MID・カテゴリは 2026-09-07 に実在確認済み。画像は data/ext/ に落とし git 管理外。
+# コミットするのは本ファイルと configs/ood_sources.lock（ID・sha256・ライセンス）のみ。
+
+# 連絡先は env CASCADE_CONTACT（Commons は連絡先の無い汎用 UA を 403 で拒否）。config へのベタ書きはしない。
+user_agent: "lab-vlm-cascade/0.1 ({contact}) python-requests/{requests_version}"
+contact: null
+
+throttle:
+  min_interval_sec: 0.5     # ≤ 2 req/s（Commons の要請）
+  max_retries: 5
+  backoff_base_sec: 1.0
+  timeout_sec: 60
+
+# 縮小案（plan v4 「時間が無い場合の削減順」）: 主型 120、near_food_nonfood 80、food_contrast 100、cord 200
+targets:
+  default: 120
+  doll_character_statue: 120
+  amusement_tourist: 120
+  signage_decor_goods: 120
+  person_animal: 120
+  vehicle_street: 120
+  near_food_nonfood: 80
+  food_contrast: 100
+  texture_document_screen: 200   # CORD-v2（補助 far）
+candidate_multiplier: 2          # 目標の 2 倍を決定的順序で抽出
+per_class_cap: 40                # 型内クラス別上限（Flower / Person / Poster の独占防止）
+min_side: 256                    # min(width, height) の下限（Commons の 500px サムネ基準）
+
+license_allowlist:               # LicenseShortName に対する正規表現（大文字小文字無視）
+  - '^CC0'
+  - '^CC BY(-SA)? \d(\.\d)?'
+  - '^CC-BY(-SA)?-\d(\.\d)?'
+  - '^Public domain'
+  - '^PD'
+  - '^No restrictions'
+  - '^Attribution'                # Open Images / Flickr 由来の "Attribution License" 表記
+
+# subject_type → 源ごとの抽出ラベル。順序は「1 画像 1 型」の優先順（先勝ち）。
+subject_types:
+  doll_character_statue:
+    open_images:
+      "/m/0167gd": Doll
+      "/m/0kmg4": Teddy bear
+      "/m/0153bq": Mascot
+      "/m/013_1c": Statue
+      "/m/06msq": Sculpture
+      "/m/01xmqj": Figurine
+    commons:
+      - Stuffed animals
+      - Plush toys
+      - Teddy bears
+      - Mascot costumes
+      - Kigurumi
+      - Fursuits
+      - Statues of mascots
+      - Maneki neko
+      - Shigaraki ware Tanuki statues
+  amusement_tourist:
+    open_images:
+      "/m/010jjr": Amusement park
+      "/m/017rgb": Ferris wheel
+      "/m/010l12": Roller coaster
+      "/m/01pwdc": Carousel
+      "/m/01h_1n": Playground
+      "/m/02y929": Swing (Seat)
+      "/m/0220r2": Fountain
+    commons:
+      - Ferris wheels
+      - Carousels
+  signage_decor_goods:
+    open_images:
+      "/m/01knjb": Billboard
+      "/m/01n5jq": Poster
+      "/m/01j51": Balloon
+      "/m/01jfsr": Lantern
+      "/m/025nd": Christmas tree
+      "/m/0bkqqh": Signage
+    commons:
+      - Toy balloons
+      - Decoration with balloons
+      - Paper lanterns in Japan
+      - Christmas decorations
+      - Shop windows with Christmas decorations
+      - Restaurant menu signs
+      - Handwritten menus
+      - Restaurant signs
+  person_animal:
+    open_images:
+      "/m/01g317": Person
+      "/m/0bt9lr": Dog
+      "/m/01yrx": Cat
+    coco: [person, dog, cat, horse, sheep, cow, elephant, bear, zebra, giraffe, bird]
+    commons:
+      - Selfies taken indoors
+      - Group selfies
+  vehicle_street:
+    open_images:
+      "/m/0k4j": Car
+      "/m/01bjv": Bus
+      "/m/07jdr": Train
+      "/m/0cgh4": Building
+      "/m/079cl": Skyscraper
+    coco: [car, bus, train, truck, bicycle, motorcycle, boat]
+  near_food_nonfood:               # Open Images は Food 明示 negative を要求
+    open_images:
+      "/m/050gv4": Plate
+      "/m/04kkgm": Bowl
+      "/m/04brg2": Tableware
+    commons:
+      - Food samples
+      - Food samples in Japan
+      - Toy food
+      - Empty plates
+      - Dirty dishes
+      - Leftovers
+  food_contrast:                   # ソース対照正例。Open Images は Food positive を要求
+    open_images:
+      "/m/02wbm": Food
+      "/m/02q08p0": Dish
+  texture_document_screen:
+    hf: [cord]
+
+open_images:
+  food_mid: "/m/02wbm"
+  class_descriptions_url: https://storage.googleapis.com/openimages/v7/oidv7-class-descriptions.csv
+  splits:
+    validation:
+      labels_url: https://storage.googleapis.com/openimages/v7/oidv7-val-annotations-human-imagelabels.csv
+      attribution_url: https://storage.googleapis.com/openimages/2018_04/validation/validation-images-with-rotation.csv
+      s3_prefix: validation
+    test:
+      labels_url: https://storage.googleapis.com/openimages/v7/oidv7-test-annotations-human-imagelabels.csv
+      attribution_url: https://storage.googleapis.com/openimages/2018_04/test/test-images-with-rotation.csv
+      s3_prefix: test
+  image_url: "https://open-images-dataset.s3.amazonaws.com/{split}/{image_id}.jpg"
+  s3_bucket: open-images-dataset
+  download_backend: https          # https | s3（boto3 匿名。UNSIGNED）
+
+commons:
+  api_url: https://commons.wikimedia.org/w/api.php
+  max_depth: 2
+  maxlag: 5
+  thumb_width: 500
+  imageinfo_batch: 50              # iiurlwidth 使用時の上限
+  mime_allow: [image/jpeg, image/png]
+  exclude_keywords:                # サブカテゴリ名にこれらを含む枝は辿らない（大文字小文字無視）
+    - in art
+    - Diagrams
+    - Videos
+    - by year
+    - SVG
+    - Panoramio ID
+    - Historical
+    - Maps
+    - Logos
+    - Stamps
+    - Coins
+    - Drawings
+    - Paintings
+  extmetadata_filter: LicenseShortName|License|LicenseUrl|Artist|Attribution|Credit|AttributionRequired|Restrictions
+
+coco:
+  images_zip_url: http://images.cocodataset.org/zips/val2017.zip
+  images_zip_bytes: 815585330
+  annotations_zip_url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+  annotations_zip_bytes: 252907541
+  annotations_member: annotations/instances_val2017.json
+  images_member_prefix: val2017/
+  categories:                      # 2017 の category id
+    person: 1
+    bicycle: 2
+    car: 3
+    motorcycle: 4
+    bus: 6
+    train: 7
+    truck: 8
+    boat: 9
+    bird: 16
+    cat: 17
+    dog: 18
+    horse: 19
+    sheep: 20
+    cow: 21
+    elephant: 22
+    bear: 23
+    zebra: 24
+    giraffe: 25
+  exclusion_category_ids: [44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 67]
+  min_area_ratio: 0.2              # 最大 bbox の (w*h)/(W*H)
+  person_max_count: 3
+  license_ids_allowed: [1, 2, 3, 4, 5, 6, 7, 8]
+
+hf:
+  cord:
+    hf_id: naver-clova-ix/cord-v2
+    revision: 7f0115a4b758a71d6473b8d085751692da2fef98
+    license_short: CC BY 4.0
+    license_url: https://creativecommons.org/licenses/by/4.0/
+    source_url: https://huggingface.co/datasets/naver-clova-ix/cord-v2
+    image_column: image
+    n_take: 200
+    subject_type: texture_document_screen
+    source_name: cord
+  screenspot:                      # 任意（時間が無ければ落とす）
+    enabled: false
+    hf_id: bevaya/ScreenSpot
+    revision: 0be08781e2e188582f6131625ae1598d443b4d5d
+    license_short: unverified       # 有効化前にデータセットカードで確認して記入する
+    license_url: ""
+    source_url: https://huggingface.co/datasets/bevaya/ScreenSpot
+    image_column: image
+    n_take: 100
+    subject_type: texture_document_screen
+    source_name: screenspot
