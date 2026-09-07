@@ -11,8 +11,8 @@ flowchart TD
     classDef irred fill:#ffc6c6,stroke:#bd0909
 
     P(["photo"]):::terminator
-    S1["Stage1: encoder zero-shot<br/>probs・margin を算出"]:::general
-    Q1{"margin ≥ しきい値<br/>かつ指定confusion pair以外?"}:::decision
+    S1["Stage1: encoder zero-shot<br/>葉スコア→ブランチ max で<br/>probs・margin・branch_margin を算出"]:::general
+    Q1{"margin・branch_margin ≥ しきい値<br/>かつ指定confusion pair以外?"}:::decision
     C1(["確定 flag = clear<br/>primary のみ"]):::terminator
     R["Stage2: 判定表の<br/>優先順位ルールを適用"]:::general
     Q2{"ルールで解決?"}:::decision

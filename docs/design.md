@@ -33,7 +33,13 @@ single source (ポリシー): rulebook.md (versioned)            ─▶ 優先�
 
 - Yelp Open Dataset photos: 約20万枚、label ∈ {food, drink, menu, inside, outside}
 - 取得は公式ページから各自ダウンロード。**画像・生データはリポジトリ非同梱**（scripts/ に手順とチェックサム検証のみ）。README等にYelp画像を掲載しない。同梱の利用規約PDFの確認を M0 の最初の工程とする
-- サンプリング: work set = 層化 25,000枚 / eval set = 凍結 2,000枚（クラス別400目安＋natural分布スライス併設）。eval は photo_id リストのハッシュで凍結し、W&B reference artifact で版管理
+- サンプリング: work set = 層化 25,000枚 / eval set = 凍結 2,000枚（work と非交差。クラス別400目安＋natural分布スライス併設）。eval は photo_id リストのハッシュで凍結し、W&B reference artifact で版管理
+- **分割と用途の分離**（M0 で確定し、以後のマイルストーンで変更しない）。探索に使ったデータで探索結果を評価することを構造的に防ぐ
+  - `tune`: work set 内の層化部分集合（目安 5,000枚、規模は D7 で決める）。しきい値探索（Optuna / Vizier）、較正（D3）、conformal の calibration、プロンプト文の修正、判定表の調整など**パラメータを fit する処理はすべてここだけ**で行う
+  - `work`（tune を除く残余）: cleanlab の out-of-sample 予測、food 予測の precision 監査（M1）、パイロットアノテーション（M4）、蒸留の soft label（M6）、M7 holdout rotation の fold 元
+  - `eval`: 最終比較と reports の数値報告のみ。eval 上で fit したパラメータは採用しない。eval の結果を見て設計を変えた場合は、その事実を意思決定ログに明記する（暗黙の再利用を禁止）
+  - 分割は photo_id の非交差に加え、同一店舗の写真が分割をまたがないよう店舗ID（`business_id`）単位で行う。非交差は M0 のテストで検証し、`eval_sets` に役割・定義・ハッシュを記録する
+  - gold（M4）は監査対象の work 側と、κ・内容精度の評価用に eval 側の両方へ付与する。gold の付与は分割の用途を変えない（eval に gold が付いても探索には使わない）
 - ラベルの扱い: Yelp付与ラベルは「来歴の混在した既存ラベル」とみなす（実務で頻出する状況の一般形）。gold は M4 で目視スポットチェックした部分集合のみとする
 - gold の記録粒度: 運用クラス（第2階層）のみを記録し、第1階層（food / non-food）は導出する。内容（content_label）・判定可能性（quality）・判定者の迷い（boundary_flag）・属性（food_visible）は別フィールドで直交に持ち、残余クラスへ混載しない。アノテーションは 50〜100 枚のパイロット → ガイドライン改訂 → 本番の2パス制（[taxonomy.md](taxonomy.md) §4）
 
@@ -79,7 +85,7 @@ single source (ポリシー): rulebook.md (versioned)            ─▶ 優先�
 - `gold_annotations(photo_id, content_label, quality, boundary_flag, food_visible, secondary, annotator, guideline_version, ts)` — 第1階層は持たない（導出のみ）。`content_label ∈ 第2階層 ∪ {unjudgeable}`、`quality ∈ {ok, degraded, unjudgeable}`
 - `predictions(run_id, photo_id, stage, probs_json, margin, branch_margin, primary, secondary, flag, model_id, cost_tokens, ts)` — `probs_json` は第2階層の確率（葉スコアを含めてよい）、`branch_margin = S_food − S_non`
 - `runs(run_id, git_sha, taxonomy_version, rulebook_version, eval_set_id, model_id, config_json, metrics_json, wandb_url, ts)`
-- `eval_sets(eval_set_id, photo_ids_hash, definition, created_at)`
+- `eval_sets(eval_set_id, role, photo_ids_hash, definition, created_at)` — `role ∈ {tune, work, eval}`（§2 の用途分離を記録。runs は評価に使った `eval_set_id` を刻印する）
 - 推移閉包用に `taxonomy_nodes(node_id, level, parent_id, ancestors)` を marts に持ち、「food の全子孫」を1クエリで取れるようにする
 
 評価は2系統: 内容精度（`quality='unjudgeable'` を除外）と運用出力精度（運用写像による導出込み）。
@@ -87,8 +93,8 @@ single source (ポリシー): rulebook.md (versioned)            ─▶ 優先�
 ## 6. マイルストーン
 
 ### M0 セットアップ
-uv環境、データ取得と規約確認、サンプリングとeval凍結、三層テーブル初期化、Tracker アダプタ実装と W&B project／GCP プロジェクト（Vertex AI Experiments）の初期化、`tracking` config の縮退動作テスト（wandb のみ／vertex のみ／none で完走すること）、Gemini の現行モデルIDを確認して config にピン留め（"latest" 系エイリアス禁止）。`taxonomy/` の導入（taxonomy.yaml v0.1、build / viz の検証通過、負のテスト、Makefile または pre-commit への束ね）。
-完了条件: `reports/m0_setup.md`（データ統計・クラス分布・eval定義・taxonomy_version）
+uv環境、データ取得と規約確認、サンプリングと tune / work / eval の分割確定（§2。`business_id` 単位の非交差テストを含む）と eval 凍結、三層テーブル初期化、Tracker アダプタ実装と W&B project／GCP プロジェクト（Vertex AI Experiments）の初期化、`tracking` config の縮退動作テスト（wandb のみ／vertex のみ／none で完走すること）、Gemini の現行モデルIDを確認して config にピン留め（"latest" 系エイリアス禁止）。`taxonomy/` の導入（taxonomy.yaml v0.1、build / viz の検証通過、負のテスト、Makefile または pre-commit への束ね）。
+完了条件: `reports/m0_setup.md`（データ統計・クラス分布・分割定義と非交差検証結果・eval定義・taxonomy_version）
 
 ### M1 ゼロショットベースライン
 最初にプロンプト埋め込みの余弦類似度行列（画像不要・テキストのみ）で兄弟プロンプトの過接近や誤爆吸収プロンプトの food 側偏りを診断し、プロンプト文を修正する。そのうえでエンコーダ2種以上でクラス別 P/R/F1、混同行列、margin 分布を、フラット5クラス方式と階層方式（葉スコア→ブランチ max）の両方で測る（D11）。food 予測画像 100 枚程度の precision 監査で誤爆の出所内訳を取り、誤爆吸収クラスの初期列挙を taxonomy v0.x に反映する（D13）。
@@ -96,7 +102,7 @@ uv環境、データ取得と規約確認、サンプリングとeval凍結、�
 完了条件: `reports/m1_baseline.md`（類似度行列、方式別比較、precision 監査の内訳表）＋W&B run
 
 ### M2 判定層と risk–coverage
-risk–coverage 曲線からクラス別・ペア別しきい値を設計。第1階層の `branch_margin` 閾値方式と直列二値ハードゲート方式を同一 eval で比較し、誤ゲートによる food 取りこぼしを実測する（D12）。しきい値探索の本体は Optuna（キャッシュ済み確率に対する純関数評価、数千トライアル）。加えて managed Vizier で同一探索空間のスタディを**無料枠内（≤100トライアル）で1本**実行し、Optuna との到達解を突き合わせて work-parity を記録する。さらに conformal prediction（split conformal / RAPS）による予測集合ベースの委譲規則——集合サイズ=1なら確定、≥2なら委譲＋secondary付与——をしきい値方式と比較し、**層別（クラス別・margin帯別）の被覆充足**まで検証する（D10。周辺被覆のみの保証は曖昧例の層で崩れうるため）。優先順位ルール v1.0 を判定層に実装しユニットテストを付ける。
+risk–coverage 曲線からクラス別・ペア別しきい値を設計する。探索・較正・conformal の calibration はすべて tune のみで行い、採用したしきい値の risk–coverage と委譲率は eval で報告する（§2）。第1階層の `branch_margin` 閾値方式と直列二値ハードゲート方式を同一 eval で比較し、誤ゲートによる food 取りこぼしを実測する（D12）。しきい値探索の本体は Optuna（キャッシュ済み確率に対する純関数評価、数千トライアル）。加えて managed Vizier で同一探索空間のスタディを**無料枠内（≤100トライアル）で1本**実行し、Optuna との到達解を突き合わせて work-parity を記録する。さらに conformal prediction（split conformal / RAPS）による予測集合ベースの委譲規則——集合サイズ=1なら確定、≥2なら委譲＋secondary付与——をしきい値方式と比較し、**層別（クラス別・margin帯別）の被覆充足**まで検証する（D10。周辺被覆のみの保証は曖昧例の層で崩れうるため）。優先順位ルール v1.0 を判定層に実装しユニットテストを付ける。
 検証命題: カバレッジを X% 委譲すると残存誤り率が Y% 下がる、の定量化。
 完了条件: `reports/m2_decision_layer.md`（risk–coverage 図、採用しきい値、委譲率）
 
@@ -126,7 +132,7 @@ VLM合議の soft label で linear probe → LP-FT / LoRA、WiSE-FT 補間。階
 完了条件: `reports/m6_distill.md`
 
 ### M7（任意）self-improving rulebook loop
-M4の監査不一致集合を訓練信号に、GEPA / ProTeGi 型のテキスト最適化で rulebook 改訂案を自動生成 → frozen eval＋**holdout rotation**（評価分割を回転させ過適合を検出）で評価 → 影響差分レポート → **人の承認ゲート** → M5 の再評価パイプラインへ接続する閉ループを実装する。境界事例集の節は ACE 流の増分キュレーション（丸ごと書き換え禁止、構造化差分更新のみ）で維持する。副題として、Stage3 昇格サブワークフローの予算制約付き構造探索（単発VQA／自己一致／2モデル一致／OCRツール併用／記述→ルール適用の候補空間を AFlow 流に探索）で D4 を自動化する。
+M4の監査不一致集合を訓練信号に、GEPA / ProTeGi 型のテキスト最適化で rulebook 改訂案を自動生成 → frozen eval＋**holdout rotation**（work 側の fold を回転させ過適合を検出。eval は凍結のまま最終報告にのみ使う）で評価 → 影響差分レポート → **人の承認ゲート** → M5 の再評価パイプラインへ接続する閉ループを実装する。境界事例集の節は ACE 流の増分キュレーション（丸ごと書き換え禁止、構造化差分更新のみ）で維持する。副題として、Stage3 昇格サブワークフローの予算制約付き構造探索（単発VQA／自己一致／2モデル一致／OCRツール併用／記述→ルール適用の候補空間を AFlow 流に探索）で D4 を自動化する。
 
 **承認ゲートの実装（PRを承認プリミティブとする）**: 改訂案はブランチ `rulebook/vX.Y-rc` ＋自動PR（本文＝影響差分レポート）として提出する。CIが gen_from_rulebook → frozen eval＋holdout rotation を再実行し、結果をPRコメント＋status check化（基準未達はマージ不能）。`rulebook.md` に CODEOWNERS＋required approving review（保護ブランチ、publicリポは無料）を設定し、**マージ＝承認確定**とする。蒸留・一括再ラベル等の高コスト下流処理は Actions environments の required reviewers で二段目ゲートを設ける。Slack は通知・催促・議論面（`/github subscribe <owner>/<repo> pulls reviews`、scheduled reminders）に限定し、承認行為は置かない（diffの見えない場所での承認と監査痕跡の分散を避ける）。
 
@@ -159,7 +165,7 @@ M4の監査不一致集合を訓練信号に、GEPA / ProTeGi 型のテキスト
 | D4 | Stage3構成（単発/自己一致/2モデル一致、確率注入の有無） | 委譲スライスでの一致率×正解率×コスト、プロンプト4条件アブレーション | 精度とコストのパレート比較。確率注入は精度向上時のみ採用（一致率のみ上昇なら不採用） | M3 | 昇格ログ |
 | D5 | irreducible境界（三値フラグ閾値） | VLM合議一致度と人間κ（gold二重判定）の突合 | 不一致帯の人間κ<基準なら分布保持が妥当 | M4 | gold二重判定 |
 | D6 | 既存ラベルの再利用可否 | cleanlabスコア分布、来歴別疑義率、スポットチェック的中率 | 来歴別疑義率<基準の部分集合のみ再利用 | M4（Yelpラベルを来歴混在の代役に） | ラベル来歴検証と併走 |
-| D7 | 評価セット規模 | Clopper–Pearson CI幅、ブートストラップ分散 | クラス別±CI目標を満たす最小n | M0で設計、M1で実測検証 | 同一計算 |
+| D7 | 評価セット規模と分割（tune / work / eval の用途分離、§2） | Clopper–Pearson CI幅、ブートストラップ分散、分割の非交差検証 | クラス別±CI目標を満たす最小n、探索と報告のデータが非交差 | M0で設計、M1で実測検証 | 同一計算 |
 | D8 | ルール変更ゲート | 版間フリップ率、ペア別影響 | フリップ率>基準で人手レビュー必須 | M5 | rulebook運用 |
 | D9 | rulebook自動最適化の採否 | 同一不一致集合を入力にした自動改訂 vs 人手改訂の対照比較、PR頻度・却下率・レビュー所要時間の計測 | 人手比の改善幅/コスト、holdout rotation間の安定性、承認ゲート通過率。却下率高止まり・レビュー負担>改善価値なら撤退（手動M5へ復帰） | M7 | 監査ループに接続 |
 | D10 | 委譲規則のconformal化の採否 | 予測集合ベース委譲 vs しきい値委譲の比較、層別被覆検証 | 同一被覆での委譲率減、全層で被覆充足 | M2 | 同左 |

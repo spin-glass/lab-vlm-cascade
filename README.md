@@ -2,6 +2,8 @@
 
 曖昧クラスを含む画像分類を「カスケード＋判定層＋監査ループ」で運用する設計の、一般実装と数値検証。Yelp Open Dataset（food / drink / menu / inside / outside の5クラス、約20万枚）を題材に、設計判断をすべて定義済みのデータ分析で下す。
 
+> **現状（2026-09）: M0 実装前の設計リポジトリ。** 存在するのは設計書（`docs/`）・参考文献・Mermaid 図・`CLAUDE.md`・本 README のみで、コード・依存定義（`pyproject.toml`）・`configs/`・`tests/`・`reports/` は未作成。以下の「セットアップ」「リポジトリ構成」は M0 以降で実現する計画であり、現時点では実行できない。設計の正本は [docs/design.md](docs/design.md)。
+
 ## 何を実証するか
 
 1. **カスケードの費用対効果** — 確信できる多数を安いエンコーダで確定し、曖昧な少数だけVLMへ委譲すれば、全量VLM比のわずかなコストで同等精度圏に入ること（M3で実測）
@@ -25,7 +27,7 @@ single source (ポリシー): rulebook.md            ─▶ 優先規則 / 判�
 
 ## 設計判断はデータ分析で下す
 
-カスケード採否・しきい値粒度・較正要否・既存ラベル再利用可否・階層スコアリング採否など13の設計判断（D1–D13）は事前に決め打ちせず、[docs/design.md](docs/design.md) §8 の decision matrix に定義した分析と判断基準で決定し、reports/ に意思決定ログ（基準値・実測値・採否）を残す。分析コードは DuckDB / BigQuery 両対応で書かれており、**公開データで方法論を確立 → 同一スクリプトを自組織のデータに向けて再実行**する二段構えの移植性を持つ。
+カスケード採否・しきい値粒度・較正要否・既存ラベル再利用可否・階層スコアリング採否など13の設計判断（D1–D13）は事前に決め打ちせず、[docs/design.md](docs/design.md) §8 の decision matrix に定義した分析と判断基準で決定し、reports/ に意思決定ログ（基準値・実測値・採否）を残す。分析コードは DuckDB / BigQuery 両対応で書き（`analysis/`、M1 以降で作成）、**公開データで方法論を確立 → 同一スクリプトを自組織のデータに向けて再実行**する二段構えの移植性を持つ。
 
 ## マイルストーン
 
@@ -46,7 +48,7 @@ single source (ポリシー): rulebook.md            ─▶ 優先規則 / 判�
 
 uv + Python 3.12 ／ OpenCLIP・SigLIP（HF）／ DuckDB＋parquet 三層（raw・core・marts）／ Gemini API（構造化出力・config上限つき）／ W&B Free＋Vertex AI Experiments（fan-out、正本はローカル runs テーブル）／ Optuna＋Vizier（無料枠内のパリティ検証）／ cleanlab。GCP実務への対応表は docs/design.md §3。
 
-## セットアップ
+## セットアップ（計画。M0 実装後に有効）
 
 ```bash
 uv sync
@@ -55,7 +57,9 @@ export GEMINI_API_KEY=... WANDB_API_KEY=... GOOGLE_CLOUD_PROJECT=...
 uv run python -m cascade.m0_setup --config configs/m0.yaml
 ```
 
-## リポジトリ構成
+## リポジトリ構成（計画）
+
+現時点で存在するのは `docs/`・`CLAUDE.md`・本 README のみ。それ以外は各マイルストーンで作成する。
 
 ```
 taxonomy/            # taxonomy.yaml（クラス定義の正本）＋ build/viz と生成物（prompts.json, label_master.csv, taxonomy.ttl）
@@ -65,6 +69,8 @@ src/cascade/         # stage1_encode / stage2_decide / stage3_escalate / audit /
 analysis/            # 設計判断 D1–D13 の分析（DuckDB / BigQuery 両対応）
 reports/             # 各Mの自動生成レポート（run_id・git sha・taxonomy/rulebook 版・概算コスト記載）
 docs/design.md       # 設計の正本
+docs/diagrams/       # design.md の可視化（Mermaid、Miro ボードの生成元）
+docs/diagram-guidelines.md  # 図の情報設計規約
 docs/taxonomy.md     # 分類体系・アノテーション設計ノート
 docs/references.md   # 主張→一次文献の対応
 CLAUDE.md            # 実装時の制約・規約
